@@ -69,6 +69,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/deposits', [AdminDeposit::class, 'apiStore']);
         Route::get('/deposits/qrcode', [AdminDeposit::class, 'apiShowQrCodeForm']);
         Route::post('/deposits/qrcode', [AdminDeposit::class, 'apiGenerateQrCode']);
+        Route::get('/deposits/qrcodes', [AdminDeposit::class, 'apiListDepositQrCodes']);
         
         // Transações
         Route::get('/transactions', [AdminTransaction::class, 'apiIndex']);

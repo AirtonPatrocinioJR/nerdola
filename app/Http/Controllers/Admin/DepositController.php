@@ -410,5 +410,22 @@ class DepositController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Listar QR Codes de depósito gerados pelo admin
+     */
+    public function apiListDepositQrCodes(Request $request)
+    {
+        $query = QrCode::where('type', 'deposit')
+            ->with(['wallet', 'user']);
+
+        if ($request->filled('is_active')) {
+            $query->where('is_active', $request->is_active);
+        }
+
+        $qrCodes = $query->orderBy('created_at', 'desc')->paginate(20);
+
+        return response()->json($qrCodes);
+    }
 }
 

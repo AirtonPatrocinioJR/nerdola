@@ -99,6 +99,11 @@ const routes = [
         component: () => import('../pages/admin/DepositQrCode.vue')
       },
       {
+        path: 'deposits/qrcodes',
+        name: 'admin.deposits.qrcodes',
+        component: () => import('../pages/admin/DepositQrCodes.vue')
+      },
+      {
         path: 'transactions',
         name: 'admin.transactions',
         component: () => import('../pages/admin/Transactions.vue')

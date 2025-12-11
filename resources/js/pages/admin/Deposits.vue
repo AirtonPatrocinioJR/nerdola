@@ -17,6 +17,13 @@
         @click="$router.push({ name: 'admin.deposits.qrcode' })"
       />
       <q-btn
+        color="info"
+        label="Ver QR Codes"
+        icon="list"
+        class="q-ml-sm"
+        @click="$router.push({ name: 'admin.deposits.qrcodes' })"
+      />
+      <q-btn
         color="positive"
         label="Gerar QR Code Pagamento"
         icon="payment"
