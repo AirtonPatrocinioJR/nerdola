@@ -148,23 +148,166 @@ async function startCamera() {
       return;
     }
 
-    codeReader = new BrowserMultiFormatReader();
-    
-    const videoInputDevices = await codeReader.listVideoInputDevices();
-    
-    if (videoInputDevices.length === 0) {
+    // Verificar se getUserMedia está disponível
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       $q.notify({
         type: 'negative',
-        message: 'Nenhuma câmera encontrada'
+        message: 'Seu navegador não suporta acesso à câmera. Use um navegador moderno como Chrome, Firefox ou Safari.'
       });
+      cameraActive.value = false;
       return;
     }
 
-    const deviceId = videoInputDevices[0].deviceId;
+    codeReader = new BrowserMultiFormatReader();
+    
+    // Detectar se está em dispositivo móvel
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
+                     (window.innerWidth <= 768);
+    
+    console.log('Dispositivo móvel detectado:', isMobile);
+    
+    let deviceId = null; // null = navegador escolhe automaticamente (padrão para mobile)
+    
+    // Em dispositivos móveis, evitar enumerateDevices que pode não ser suportado
+    // Em desktop, tentar enumerar para escolher a melhor câmera
+    if (!isMobile && codeReader.listVideoInputDevices) {
+      try {
+        // Tentar solicitar permissão primeiro para habilitar enumerateDevices
+        try {
+          const permissionStream = await navigator.mediaDevices.getUserMedia({ 
+            video: true 
+          });
+          permissionStream.getTracks().forEach(track => track.stop());
+          // Aguardar um pouco para garantir que a permissão foi processada
+          await new Promise(resolve => setTimeout(resolve, 100));
+        } catch (permError) {
+          // Se falhar, continuar mesmo assim
+          console.warn('Aviso ao solicitar permissão:', permError);
+        }
+        
+        // Tentar enumerar dispositivos apenas em desktop
+        // Usar timeout para evitar travar se o método não responder
+        const enumPromise = codeReader.listVideoInputDevices();
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout ao enumerar dispositivos')), 3000)
+        );
+        
+        const videoInputDevices = await Promise.race([enumPromise, timeoutPromise]);
+        
+        if (videoInputDevices && videoInputDevices.length > 0) {
+          // Preferir câmera traseira se disponível
+          const backCamera = videoInputDevices.find(device => 
+            device.label && (
+              device.label.toLowerCase().includes('back') || 
+              device.label.toLowerCase().includes('rear') ||
+              device.label.toLowerCase().includes('environment')
+            )
+          );
+          deviceId = backCamera ? backCamera.deviceId : videoInputDevices[0].deviceId;
+        }
+      } catch (enumError) {
+        // Se falhar ao enumerar (muito comum em mobile e alguns navegadores), usar null
+        console.warn('Não foi possível enumerar dispositivos, usando câmera padrão:', enumError);
+        deviceId = null; // Navegador escolherá automaticamente
+      }
+    }
+    // Em mobile ou se enumerateDevices não estiver disponível, sempre usar null
+
     scanning.value = true;
 
+    // Sempre usar getUserMedia primeiro para obter permissão e stream
+    // Isso funciona melhor em mobile e evita problemas com enumerateDevices
+    try {
+      console.log('Solicitando acesso à câmera...');
+      
+      // Tentar primeiro com facingMode para mobile
+      let constraints = {
+        video: {
+          facingMode: 'environment', // Preferir câmera traseira em mobile
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        }
+      };
+      
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        console.log('Stream obtido com sucesso usando facingMode');
+      } catch (facingModeError) {
+        // Se facingMode falhar, tentar sem especificações específicas
+        console.warn('Erro com facingMode, tentando sem especificações:', facingModeError);
+        constraints = { video: true };
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        console.log('Stream obtido com sucesso usando video: true');
+      }
+      
+      // Conectar o stream ao elemento de vídeo
+      videoElement.value.srcObject = stream;
+      
+      // Aguardar o vídeo estar pronto
+      await new Promise((resolve, reject) => {
+        videoElement.value.onloadedmetadata = () => {
+          videoElement.value.play()
+            .then(() => {
+              console.log('Vídeo iniciado com sucesso');
+              resolve();
+            })
+            .catch(reject);
+        };
+        videoElement.value.onerror = reject;
+        // Timeout de segurança
+        setTimeout(() => reject(new Error('Timeout ao carregar vídeo')), 5000);
+      });
+      
+      // Garantir que deviceId seja null para evitar enumeração
+      deviceId = null;
+      
+    } catch (streamError) {
+      console.error('Erro detalhado ao obter stream de vídeo:', streamError);
+      
+      let errorMessage = 'Erro ao acessar a câmera. Verifique as permissões.';
+      
+      if (streamError.name === 'NotAllowedError' || streamError.name === 'PermissionDeniedError') {
+        errorMessage = 'Permissão de câmera negada. Por favor, permita o acesso à câmera nas configurações do navegador e recarregue a página.';
+      } else if (streamError.name === 'NotFoundError' || streamError.name === 'DevicesNotFoundError') {
+        errorMessage = 'Nenhuma câmera encontrada no dispositivo.';
+      } else if (streamError.name === 'NotReadableError' || streamError.name === 'TrackStartError') {
+        errorMessage = 'A câmera está sendo usada por outro aplicativo. Feche outros aplicativos que estão usando a câmera e tente novamente.';
+      } else if (streamError.name === 'OverconstrainedError' || streamError.name === 'ConstraintNotSatisfiedError') {
+        errorMessage = 'As configurações da câmera não são suportadas. Tentando com configurações padrão...';
+        // Tentar novamente com configurações mais simples
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          videoElement.value.srcObject = stream;
+          await videoElement.value.play();
+          deviceId = null;
+          // Continuar com o fluxo normal
+        } catch (retryError) {
+          $q.notify({
+            type: 'negative',
+            message: 'Não foi possível acessar a câmera. Verifique se o dispositivo possui câmera e se as permissões estão habilitadas.'
+          });
+          cameraActive.value = false;
+          scanning.value = false;
+          return;
+        }
+      } else {
+        errorMessage = `Erro ao acessar a câmera: ${streamError.message || streamError.name || 'Erro desconhecido'}. Verifique as permissões.`;
+      }
+      
+      $q.notify({
+        type: 'negative',
+        message: errorMessage
+      });
+      cameraActive.value = false;
+      scanning.value = false;
+      return;
+    }
+
     // Decodificar continuamente - NotFoundException é esperado quando não há QR Code
-    const decodePromise = codeReader.decodeFromVideoDevice(deviceId, videoElement.value, (result, err) => {
+    // Usar try-catch para capturar erros síncronos que podem ocorrer durante a chamada
+    let decodePromise;
+    try {
+      decodePromise = codeReader.decodeFromVideoDevice(deviceId, videoElement.value, (result, err) => {
         if (result) {
           handleQrCodeScanned(result.getText());
           return;
@@ -182,6 +325,11 @@ async function startCamera() {
             // Erro esperado - não fazer nada
             return;
           }
+          // Verificar se é erro de enumeração
+          if (errorName.includes('enumerate') || err.message?.includes('enumerate')) {
+            console.warn('Erro de enumeração durante leitura, mas continuando:', err);
+            return; // Ignorar erro de enumeração durante leitura
+          }
           // Apenas logar erros que não são esperados durante a leitura normal
           console.warn('Aviso ao ler QR Code:', err);
         }
@@ -197,6 +345,11 @@ async function startCamera() {
             if (errorName.includes('NotFound') || errorName.includes('NoQRCode')) {
               return; // Erro esperado - ignorar
             }
+            // Verificar se é erro de enumeração
+            if (errorName.includes('enumerate') || err.message?.includes('enumerate')) {
+              console.warn('Erro de enumeração capturado, mas stream pode estar funcionando:', err);
+              return; // Stream pode estar funcionando mesmo com erro de enumeração
+            }
             // Erro real - tratar
             console.error('Erro ao iniciar leitura:', err);
             $q.notify({
@@ -207,11 +360,114 @@ async function startCamera() {
           }
         });
       }
+    } catch (syncError) {
+      // Capturar erros síncronos que podem ocorrer durante a chamada de decodeFromVideoDevice
+      const errorName = syncError.name || syncError.constructor?.name || '';
+      const errorMessage = syncError.message || '';
+      
+      if (errorMessage.includes('enumerate') || errorName.includes('enumerate')) {
+        // Se for erro de enumeração e estamos em mobile, tentar novamente sem deviceId
+        console.warn('Erro de enumeração síncrono capturado:', syncError);
+        if (isMobile || deviceId === null) {
+          // Já estamos usando null, então o erro pode ser interno do ZXing
+          // Tentar aguardar um pouco e usar getUserMedia diretamente
+          try {
+            if (!stream) {
+              stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'environment' }
+              });
+              videoElement.value.srcObject = stream;
+              await videoElement.value.play();
+            }
+            // Tentar novamente com null após stream estar ativo
+            decodePromise = codeReader.decodeFromVideoDevice(null, videoElement.value, (result, err) => {
+              if (result) {
+                handleQrCodeScanned(result.getText());
+                return;
+              }
+              if (err && !err.name?.includes('NotFound') && !err.name?.includes('NoQRCode')) {
+                console.warn('Aviso ao ler QR Code:', err);
+              }
+            });
+          } catch (retryError) {
+            throw syncError; // Re-lançar erro original se retry falhar
+          }
+        } else {
+          throw syncError; // Re-lançar para ser capturado pelo catch externo
+        }
+      } else {
+        throw syncError; // Re-lançar outros erros
+      }
+    }
     } catch (err) {
-      console.error('Erro ao acessar câmera:', err);
+      console.error('Erro geral ao acessar câmera:', err);
+      console.error('Detalhes do erro:', {
+        name: err.name,
+        message: err.message,
+        stack: err.stack
+      });
+      
+      // Limpar recursos em caso de erro
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+      }
+      if (videoElement.value) {
+        videoElement.value.srcObject = null;
+      }
+      
+      // Mensagens de erro mais específicas
+      let errorMessage = 'Erro ao acessar a câmera. Verifique as permissões.';
+      
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        errorMessage = 'Permissão de câmera negada. Por favor, permita o acesso à câmera nas configurações do navegador e recarregue a página.';
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        errorMessage = 'Nenhuma câmera encontrada no dispositivo.';
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        errorMessage = 'A câmera está sendo usada por outro aplicativo. Feche outros aplicativos e tente novamente.';
+      } else if (err.name === 'OverconstrainedError' || err.name === 'ConstraintNotSatisfiedError') {
+        errorMessage = 'As configurações da câmera não são suportadas pelo dispositivo.';
+      } else if (err.message && (err.message.includes('enumerate') || err.message.includes('method not supported'))) {
+        // Se for erro de enumeração, tentar usar apenas getUserMedia sem ZXing primeiro
+        errorMessage = 'Não foi possível enumerar dispositivos. Tentando usar a câmera diretamente...';
+        console.log('Tentando fallback sem enumeração...');
+        
+        try {
+          // Tentar obter stream novamente se não tiver
+          if (!stream && videoElement.value) {
+            stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            videoElement.value.srcObject = stream;
+            await videoElement.value.play();
+          }
+          
+          // Tentar usar decodeFromVideoDevice com null
+          if (codeReader && videoElement.value) {
+            scanning.value = true;
+            codeReader.decodeFromVideoDevice(null, videoElement.value, (result, err) => {
+              if (result) {
+                handleQrCodeScanned(result.getText());
+                return;
+              }
+              if (err) {
+                const errorName = err.name || err.constructor?.name || '';
+                if (!errorName.includes('NotFound') && !errorName.includes('NoQRCode')) {
+                  console.warn('Aviso ao ler QR Code:', err);
+                }
+              }
+            });
+            return; // Sucesso ao tentar com deviceId null
+          }
+        } catch (retryError) {
+          console.error('Erro no fallback:', retryError);
+          errorMessage = 'Erro ao acessar a câmera. Verifique as permissões e se o navegador suporta acesso à câmera.';
+        }
+      } else {
+        errorMessage = `Erro ao acessar a câmera: ${err.message || err.name || 'Erro desconhecido'}. Verifique as permissões.`;
+      }
+      
       $q.notify({
         type: 'negative',
-        message: err.message || 'Erro ao acessar a câmera. Verifique as permissões.'
+        message: errorMessage
       });
       cameraActive.value = false;
       scanning.value = false;
@@ -226,6 +482,10 @@ function stopCamera() {
   if (stream) {
     stream.getTracks().forEach(track => track.stop());
     stream = null;
+  }
+  if (videoElement.value) {
+    videoElement.value.srcObject = null;
+    videoElement.value.pause();
   }
   cameraActive.value = false;
   scanning.value = false;
