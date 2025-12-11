@@ -11,10 +11,17 @@
       />
       <q-btn
         color="secondary"
-        label="Gerar QR Code"
+        label="Gerar QR Code Depósito"
         icon="qr_code"
         class="q-ml-sm"
         @click="$router.push({ name: 'admin.deposits.qrcode' })"
+      />
+      <q-btn
+        color="positive"
+        label="Gerar QR Code Pagamento"
+        icon="payment"
+        class="q-ml-sm"
+        @click="$router.push({ name: 'admin.payments.qrcode' })"
       />
     </div>
 

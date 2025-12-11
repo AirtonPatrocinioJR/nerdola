@@ -8,6 +8,7 @@ use App\Http\Controllers\Admin\DashboardController as AdminDashboard;
 use App\Http\Controllers\Admin\UserController as AdminUser;
 use App\Http\Controllers\Admin\DepositController as AdminDeposit;
 use App\Http\Controllers\Admin\TransactionController as AdminTransaction;
+use App\Http\Controllers\Admin\PaymentController as AdminPayment;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -71,6 +72,10 @@ Route::middleware('auth:sanctum')->group(function () {
         
         // Transações
         Route::get('/transactions', [AdminTransaction::class, 'apiIndex']);
+        
+        // Pagamentos (QR Codes gerados pelo admin)
+        Route::get('/payments/qrcode', [AdminPayment::class, 'apiIndex']);
+        Route::post('/payments/qrcode', [AdminPayment::class, 'apiGeneratePaymentQrCode']);
     });
 
     // Confirmações de QR Code (requerem autenticação)

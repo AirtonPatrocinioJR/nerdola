@@ -41,6 +41,11 @@ class User extends Authenticatable
         return $this->role === 'client';
     }
 
+    public function isSystem(): bool
+    {
+        return $this->email === 'system@nerdola.com';
+    }
+
     public function wallet()
     {
         return $this->hasOne(Wallet::class);

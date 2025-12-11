@@ -75,7 +75,8 @@ class QrCode extends Model
             return false;
         }
 
-        if ($this->usage_limit && $this->times_used >= $this->usage_limit) {
+        // Se usage_limit for null, o QR Code é ilimitado
+        if ($this->usage_limit !== null && $this->times_used >= $this->usage_limit) {
             return false;
         }
 
@@ -84,8 +85,11 @@ class QrCode extends Model
 
     public function incrementUsage(): void
     {
-        $this->times_used++;
-        $this->save();
+        // Só incrementa se tiver limite de uso definido
+        if ($this->usage_limit !== null) {
+            $this->times_used++;
+            $this->save();
+        }
     }
 
     public function getUrl(): string

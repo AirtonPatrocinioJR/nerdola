@@ -52,6 +52,14 @@
             <q-item-label>Transações</q-item-label>
           </q-item-section>
         </q-item>
+        <q-item clickable v-ripple to="/admin/payments/qrcodes">
+          <q-item-section avatar>
+            <q-icon name="qr_code_scanner" />
+          </q-item-section>
+          <q-item-section>
+            <q-item-label>QR Codes de Pagamento</q-item-label>
+          </q-item-section>
+        </q-item>
       </q-list>
     </q-drawer>
 

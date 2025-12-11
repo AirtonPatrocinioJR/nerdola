@@ -99,10 +99,10 @@ class QrCodeController extends Controller
                 'from_wallet_id' => $wallet->id,
                 'to_wallet_id' => $qrCode->wallet_id,
                 'from_user_id' => $user->id,
-                'to_user_id' => $qrCode->user_id,
+                'to_user_id' => $qrCode->user_id ?? $qrCode->wallet->user_id ?? null,
                 'status' => 'completed',
                 'description' => $qrCode->description,
-                'source' => 'qr_code',
+                'source' => $qrCode->wallet && $qrCode->wallet->user && $qrCode->wallet->user->isSystem() ? 'admin_qr_code' : 'qr_code',
                 'qr_code_id' => $qrCode->id,
             ]);
 
@@ -221,10 +221,10 @@ class QrCodeController extends Controller
                 'from_wallet_id' => $wallet->id,
                 'to_wallet_id' => $qrCode->wallet_id,
                 'from_user_id' => $user->id,
-                'to_user_id' => $qrCode->user_id,
+                'to_user_id' => $qrCode->user_id ?? $qrCode->wallet->user_id ?? null,
                 'status' => 'completed',
                 'description' => $qrCode->description,
-                'source' => 'qr_code',
+                'source' => $qrCode->wallet && $qrCode->wallet->user && $qrCode->wallet->user->isSystem() ? 'admin_qr_code' : 'qr_code',
                 'qr_code_id' => $qrCode->id,
             ]);
 

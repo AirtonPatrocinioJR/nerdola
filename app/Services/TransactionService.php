@@ -18,7 +18,8 @@ class TransactionService
 
     public function validateUserCanReceive(User $user): bool
     {
-        return $user->isClient() && $user->is_active;
+        // Permite recebimento se for cliente ativo ou usuário do sistema
+        return ($user->isClient() && $user->is_active) || $user->isSystem();
     }
 
     public function validateBalance(Wallet $wallet, float $amount): bool
@@ -82,8 +83,18 @@ class TransactionService
             throw new \Exception('QR Code inválido ou expirado.');
         }
 
-        if (!$this->validateUserCanReceive($qrCode->user)) {
+        // Validar recebimento apenas se o QR Code tiver um usuário vinculado
+        // QR Codes do sistema podem não ter user_id, mas têm wallet_id
+        if ($qrCode->user_id && !$this->validateUserCanReceive($qrCode->user)) {
             throw new \Exception('Recebedor não pode receber pagamentos.');
+        }
+        
+        // Se não tem user_id mas tem wallet_id, verificar se a carteira pertence ao sistema
+        if (!$qrCode->user_id && $qrCode->wallet_id) {
+            $wallet = $qrCode->wallet;
+            if ($wallet && $wallet->user && !$wallet->user->isSystem()) {
+                throw new \Exception('QR Code inválido.');
+            }
         }
 
         DB::beginTransaction();
@@ -91,16 +102,23 @@ class TransactionService
             $payerWallet->subtractBalance($amount);
             $receiverWallet->addBalance($amount);
 
+            // Determinar to_user_id e source
+            $toUserId = $qrCode->user_id ?? $receiverWallet->user_id ?? null;
+            $source = 'qr_code';
+            if ($receiverWallet->user && $receiverWallet->user->isSystem()) {
+                $source = 'admin_qr_code';
+            }
+
             $transaction = Transaction::create([
                 'type' => 'payment',
                 'amount' => $amount,
                 'from_wallet_id' => $payerWallet->id,
                 'to_wallet_id' => $receiverWallet->id,
                 'from_user_id' => $payer->id,
-                'to_user_id' => $qrCode->user_id,
+                'to_user_id' => $toUserId,
                 'status' => 'completed',
                 'description' => $qrCode->description,
-                'source' => 'qr_code',
+                'source' => $source,
                 'qr_code_id' => $qrCode->id,
             ]);
 

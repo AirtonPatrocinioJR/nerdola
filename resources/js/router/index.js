@@ -102,6 +102,16 @@ const routes = [
         path: 'transactions',
         name: 'admin.transactions',
         component: () => import('../pages/admin/Transactions.vue')
+      },
+      {
+        path: 'payments/qrcode',
+        name: 'admin.payments.qrcode',
+        component: () => import('../pages/admin/PaymentQrCode.vue')
+      },
+      {
+        path: 'payments/qrcodes',
+        name: 'admin.payments.qrcodes',
+        component: () => import('../pages/admin/PaymentQrCodes.vue')
       }
     ]
   },
